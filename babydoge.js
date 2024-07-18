@@ -156,7 +156,7 @@ class Babygoge {
                     this.log(`Đã tap ${String(mined).yellow} lần. Balance: ${String(balance).yellow} Năng lượng: ${String(newEnergy).yellow}`);
 
                     energy = newEnergy;
-                    await this.sleep(Math.floor(Math.random() * (2000 - 1000 + 1)) + 2000);
+                    await this.sleep(Math.floor(Math.random() * (2000 - 1000 + 1)) + 1000);
                     if (energy < 30) {
                         this.log('Năng lượng quá thấp để tiếp tục tap...chuyển tài khoản!'.yellow);
                         break;
@@ -292,11 +292,13 @@ class Babygoge {
         this.log('Tool được chia sẻ tại kênh telegram Dân Cày Airdrop (@dancayairdrop)'.green);
         console.log(this.line);
     
-        const buyCards = await this.askQuestion('Bạn có muốn mua thẻ mới không? (y/n): ');
-        const buyCardsDecision = buyCards.toLowerCase() === 'y';
+        const buyCards = 'y';
+		const buyCardsDecision = buyCards.toLowerCase() === 'y';
+		console.log('Bạn đã chọn mua thẻ mới.');
     
-        const upgradeMyCards = await this.askQuestion('Bạn có muốn nâng cấp thẻ không? (y/n): ');
-        const upgradeMyCardsDecision = upgradeMyCards.toLowerCase() === 'y';
+        const upgradeMyCards = 'y';
+		const upgradeMyCardsDecision = upgradeMyCards.toLowerCase() === 'y';
+		console.log('Bạn đã chọn nâng cấp thẻ.');
     
         while (true) {
             const start = performance.now();
