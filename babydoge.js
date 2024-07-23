@@ -5,7 +5,7 @@ const colors = require('colors');
 const readline = require('readline');
 const { performance } = require('perf_hooks');
 
-class Babygoge {
+class Babydoge {
     constructor() {
         this.headers = {
             'Accept': 'application/json, text/plain, */*',
@@ -46,6 +46,7 @@ class Babygoge {
             } catch (error) {
                 attempts++;
                 this.log(`Lỗi kết nối (Lần thử ${attempts}/${maxAttempts}): ${error.message}`.red);
+                
                 if (attempts < maxAttempts) {
                     await this.sleep(5000);
                 } else {
@@ -67,10 +68,12 @@ class Babygoge {
             const res = await this.http(url, headers, tgData);
             if (res.data) {
                 this.log('Đăng nhập thành công!'.green);
-                const { balance, energy, max_energy, access_token } = res.data;
+                const { balance, energy, max_energy, access_token, league } = res.data;
+                const points_per_tap = league.points_per_tap;
                 this.log('Balance:'.green + ` ${balance}`);
                 this.log('Năng lượng:'.green + ` ${energy}/${max_energy}`);
-                return { access_token, energy };
+                this.log('Points per tap:'.green + ` ${points_per_tap}`);
+                return { access_token, energy, points_per_tap };
             } else {
                 this.log('Đăng nhập thất bại!'.red);
                 return null;
@@ -140,24 +143,32 @@ class Babygoge {
         }
     }
 
-    async tapdc(access_token, initialEnergy) {
+    async tapdc(access_token, initialEnergy, points_per_tap) {
         const url = 'https://backend.babydogepawsbot.com/mine';
         const headers = { ...this.headers, 'X-Api-Key': access_token, 'Content-Type': 'application/json' };
         let energy = initialEnergy;
+    
         try {
             while (energy >= 50) {
-                const count = Math.floor(Math.random() * (50 - 10 + 1)) + 10;
+                const randomEnergy = Math.floor(Math.random() * (50 - 10 + 1)) + 10;
+                let count = Math.floor((energy - randomEnergy) / points_per_tap);
+    
+                if (count <= 0) {
+                    this.log('Năng lượng không đủ để tiếp tục tap...chuyển tài khoản!'.yellow);
+                    break;
+                }
+    
                 const data = JSON.stringify({ count });
-
+    
                 const res = await this.http(url, headers, data);
                 if (res.data) {
                     const { balance, mined, newEnergy, league, current_league, next_league } = res.data;
-
+    
                     this.log(`Đã tap ${String(mined).yellow} lần. Balance: ${String(balance).yellow} Năng lượng: ${String(newEnergy).yellow}`);
-
+    
                     energy = newEnergy;
-                    await this.sleep(Math.floor(Math.random() * (2000 - 1000 + 1)) + 1000);
-                    if (energy < 30) {
+    
+                    if (energy < 50) {
                         this.log('Năng lượng quá thấp để tiếp tục tap...chuyển tài khoản!'.yellow);
                         break;
                     }
@@ -169,7 +180,8 @@ class Babygoge {
         } catch (error) {
             this.log(`Lỗi rồi: ${error.message}`.red);
         }
-    }
+    }    
+    
 
     async buyCards(access_token) {
         const listCardsUrl = 'https://backend.babydogepawsbot.com/cards/new';
@@ -292,13 +304,11 @@ class Babygoge {
         this.log('Tool được chia sẻ tại kênh telegram Dân Cày Airdrop (@dancayairdrop)'.green);
         console.log(this.line);
     
-        const buyCards = 'y';
-		const buyCardsDecision = buyCards.toLowerCase() === 'y';
-		console.log('Bạn đã chọn mua thẻ mới.');
+        const buyCards = await this.askQuestion('Bạn có muốn mua thẻ mới không? (y/n): ');
+        const buyCardsDecision = buyCards.toLowerCase() === 'y';
     
-        const upgradeMyCards = 'y';
-		const upgradeMyCardsDecision = upgradeMyCards.toLowerCase() === 'y';
-		console.log('Bạn đã chọn nâng cấp thẻ.');
+        const upgradeMyCards = await this.askQuestion('Bạn có muốn nâng cấp thẻ không? (y/n): ');
+        const upgradeMyCardsDecision = upgradeMyCards.toLowerCase() === 'y';
     
         while (true) {
             const start = performance.now();
@@ -308,7 +318,14 @@ class Babygoge {
                 const firstName = userData.first_name;
                 console.log(`========== Tài khoản ${index + 1}/${data.length} | ${firstName.green} ==========`);
     
-                const { balance, access_token, energy } = await this.dangnhap(tgData);
+                const loginData = await this.dangnhap(tgData);
+                if (!loginData) {
+                    this.log('Đăng nhập thất bại, chuyển sang tài khoản tiếp theo.'.red);
+                    continue;
+                }
+    
+                const { balance, access_token, energy, points_per_tap } = loginData;
+
                 if (access_token) {
                     await this.daily(access_token);
     
@@ -325,13 +342,13 @@ class Babygoge {
                         await this.upgradeMyCards(access_token, balance);
                     }
                     
-                    await this.tapdc(access_token, energy);
+                    await this.tapdc(access_token, energy, points_per_tap);
                 }
     
                 await this.sleep(5000);
             }
     
-            await this.waitWithCountdown(3600);
+            await this.waitWithCountdown(60);
         }
     }
 }   
@@ -340,7 +357,7 @@ if (require.main === module) {
     process.on('SIGINT', () => {
         process.exit();
     });
-    (new Babygoge()).main().catch(error => {
+    (new Babydoge()).main().catch(error => {
         console.error(error);
         process.exit(1);
     });
