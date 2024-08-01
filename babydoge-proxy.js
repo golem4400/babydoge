@@ -64,7 +64,7 @@ class Babydoge {
 
     async checkProxyIP(proxy) {
         let attempts = 0;
-        const maxAttempts = 5;
+        const maxAttempts = 1;
         while (attempts < maxAttempts) {
             try {
                 const proxyAgent = new HttpsProxyAgent(proxy);
@@ -74,7 +74,7 @@ class Babydoge {
                 if (response.status === 200) {
                     return response.data.ip;
                 } else {
-                    throw new Error(`Không thể kiểm tra IP của proxy. Status code: ${response.status}`);
+                    this.log(`Không thể kiểm tra IP của proxy. Status code: ${response.status}`);
                 }
             } catch (error) {
                 attempts++;
@@ -82,7 +82,8 @@ class Babydoge {
                 if (attempts < maxAttempts) {
                     await this.sleep(2000);
                 } else {
-                    throw new Error(`Error khi kiểm tra IP của proxy sau ${maxAttempts} lần thử: ${error.message}`);
+                    this.log(`Error khi kiểm tra IP của proxy sau ${maxAttempts} lần thử: ${error.message}`);
+                    break;
                 }
             }
         }
@@ -193,7 +194,7 @@ class Babydoge {
 
                 const res = await this.http(url, headers, data, proxy);
                 if (res.data) {
-                    const { balance, mined, newEnergy, league, current_league, next_league } = res.data;
+                    const { balance, mined, newEnergy, league, current_league, next_league } = res.data.mine;
 
                     this.log(`Đã tap ${String(mined).yellow} lần. Balance: ${String(balance).yellow} Năng lượng: ${String(newEnergy).yellow}`);
 

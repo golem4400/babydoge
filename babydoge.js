@@ -162,7 +162,7 @@ class Babydoge {
     
                 const res = await this.http(url, headers, data);
                 if (res.data) {
-                    const { balance, mined, newEnergy, league, current_league, next_league } = res.data;
+                    const { balance, mined, newEnergy, league, current_league, next_league } = res.data.mine;
     
                     this.log(`Đã tap ${String(mined).yellow} lần. Balance: ${String(balance).yellow} Năng lượng: ${String(newEnergy).yellow}`);
     
