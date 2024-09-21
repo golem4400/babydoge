@@ -50,8 +50,12 @@ class Babydoge {
                 return res;
             } catch (error) {
                 attempts++;
+                if (error.response && error.response.data && error.response.data.code === 403 && error.response.data.message === 'requirements not met') {
+                    this.log('Requirements not met'.yellow);
+                    return { data: error.response.data };
+                }
                 this.log(`Lỗi kết nối (Lần thử ${attempts}/${maxAttempts}): ${error.message}`.red);
-//                console.log(error);
+                console.log(error);
                 if (attempts < maxAttempts) {
                     await this.sleep(5000);
                 } else {
@@ -215,7 +219,7 @@ class Babydoge {
     }
 
     async buyCards(access_token, proxy) {
-        const listCardsUrl = 'https://backend.babydogepawsbot.com/cards/new';
+        const listCardsUrl = 'https://backend.babydogepawsbot.com/cards';
         const upgradeUrl = 'https://backend.babydogepawsbot.com/cards';
         const getMeUrl = 'https://backend.babydogepawsbot.com/getMe';
         const headers = { ...this.headers, 'X-Api-Key': access_token, 'Content-Type': 'application/json' };
@@ -226,21 +230,22 @@ class Babydoge {
     
             const res = await this.http(listCardsUrl, headers, null, proxy);
             if (res.data && res.data.length > 0) {
-                const cards = res.data;
-                for (const card of cards) {
-                    if (balance < card.upgrade_cost) {
-                        this.log(`Số dư không đủ để mua thẻ !`.red);
-                        return;
-                    }
+                for (const category of res.data) {
+                    for (const card of category.cards) {
+                        if (balance < card.upgrade_cost) {
+                            this.log(`Số dư không đủ để mua thẻ !`.red);
+                            return;
+                        }
     
-                    if (card.cur_level === 0) {
-                        const upgradeData = JSON.stringify({ id: card.id });
-                        const upgradeRes = await this.http(upgradeUrl, headers, upgradeData, proxy);
-                        if (upgradeRes.data) {
-                            balance = upgradeRes.data.balance;
-                            this.log(`Đang mua thẻ ${card.name.yellow}...Trạng thái: ${'Thành công'.green} Balance mới: ${String(balance).yellow}`);
-                        } else {
-                            this.log(`Đang mua thẻ ${card.name.yellow}...Trạng thái: ${'Thất bại'.red}`);
+                        if (card.cur_level === 0 && card.is_available) {
+                            const upgradeData = JSON.stringify({ id: card.id });
+                            const upgradeRes = await this.http(upgradeUrl, headers, upgradeData, proxy);
+                            if (upgradeRes.data) {
+                                balance = upgradeRes.data.balance;
+                                this.log(`Đang mua thẻ ${card.name.yellow}...Trạng thái: ${'Thành công'.green} Balance mới: ${String(balance).yellow}`);
+                            } else {
+                                this.log(`Đang mua thẻ ${card.name.yellow}...Trạng thái: ${'Thất bại'.red}`);
+                            }
                         }
                     }
                 }
@@ -251,9 +256,9 @@ class Babydoge {
             this.log(`Lỗi rồi: ${error.message}`.red);
         }
     }    
-
-    async upgradeMyCards(access_token, proxy) {
-        const listMyCardsUrl = 'https://backend.babydogepawsbot.com/cards/my';
+    
+    async upgradeMyCards(access_token, proxy, maxUpgradeCost) {
+        const listCardsUrl = 'https://backend.babydogepawsbot.com/cards';
         const upgradeUrl = 'https://backend.babydogepawsbot.com/cards';
         const getMeUrl = 'https://backend.babydogepawsbot.com/getMe';
         const headers = { ...this.headers, 'X-Api-Key': access_token, 'Content-Type': 'application/json' };
@@ -262,31 +267,44 @@ class Babydoge {
             const getMeRes = await this.http(getMeUrl, headers, null, proxy);
             let balance = getMeRes.data.balance;
     
-            const res = await this.http(listMyCardsUrl, headers, null, proxy);
+            const res = await this.http(listCardsUrl, headers, null, proxy);
             if (res.data && res.data.length > 0) {
-                let cards = res.data;
-                while (true) {
-                    let upgraded = false;
-                    for (const card of cards) {
-                        if (balance < card.upgrade_cost) {
-                            this.log(`Số dư không đủ để nâng cấp thẻ !`.red);
-                            return;
-                        }
+                let allCards = res.data.flatMap(category => category.cards);
+                let upgradedThisCycle = new Set();
     
-                        if (balance >= card.upgrade_cost) {
+                while (true) {
+                    allCards.sort((a, b) => b.cur_total_farming - a.cur_total_farming);
+    
+                    let upgradedAny = false;
+                    for (const card of allCards) {
+                        if (!upgradedThisCycle.has(card.id) && 
+                            balance >= card.upgrade_cost && 
+                            card.is_available && 
+                            card.upgrade_cost <= maxUpgradeCost) {
                             const upgradeData = JSON.stringify({ id: card.id });
                             const upgradeRes = await this.http(upgradeUrl, headers, upgradeData, proxy);
                             if (upgradeRes.data) {
                                 balance = upgradeRes.data.balance;
-                                cards = upgradeRes.data.my_cards;
                                 this.log(`Đang nâng cấp thẻ ${card.name.yellow}...Trạng thái: ${'Thành công'.green} Balance mới: ${String(balance).yellow}`);
-                                upgraded = true;
+                                upgradedAny = true;
+                                upgradedThisCycle.add(card.id);
+                                card.cur_level += 1;
+                                card.upgrade_cost = upgradeRes.data.next_upgrade_cost;
+                                card.cur_total_farming = upgradeRes.data.cur_total_farming;
                             } else {
                                 this.log(`Đang nâng cấp thẻ ${card.name.yellow}...Trạng thái: ${'Thất bại'.red}`);
                             }
+                            break;
+                        } else if (card.upgrade_cost > maxUpgradeCost) {
+                            this.log(`Không nâng cấp thẻ ${card.name.yellow}: Upgrade cost (${card.upgrade_cost}) vượt quá giới hạn (${maxUpgradeCost})`.yellow);
                         }
                     }
-                    if (!upgraded) break;
+                    if (!upgradedAny) {
+                        break;
+                    }
+                    if (upgradedThisCycle.size === allCards.length) {
+                        upgradedThisCycle.clear();
+                    }
                 }
             } else {
                 this.log('Không có thẻ nào cần nâng cấp.'.yellow);
@@ -294,7 +312,7 @@ class Babydoge {
         } catch (error) {
             this.log(`Lỗi khi nâng cấp thẻ: ${error.message}`.red);
         }
-    }     
+    }
     
     async sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
@@ -349,13 +367,22 @@ class Babydoge {
         }
         
         this.log('Tool được chia sẻ tại kênh telegram Dân Cày Airdrop (@dancayairdrop)'.green);
+        this.log('query_id chỉ có hạn 1 ngày, nhớ lấy lại mỗi ngày nhé'.magenta);
         console.log(this.line);
     
         const buyCards = await this.askQuestion('Bạn có muốn mua thẻ mới không? (y/n): ');
         const buyCardsDecision = buyCards.toLowerCase() === 'y';
-    
         const upgradeMyCards = await this.askQuestion('Bạn có muốn nâng cấp thẻ không? (y/n): ');
         const upgradeMyCardsDecision = upgradeMyCards.toLowerCase() === 'y';
+        let maxUpgradeCost = Infinity;
+        if (upgradeMyCardsDecision) {
+            const maxCostInput = await this.askQuestion('Bạn muốn nâng cấp thẻ có giá trị tối đa bao nhiêu? ');
+            maxUpgradeCost = parseInt(maxCostInput, 10);
+            if (isNaN(maxUpgradeCost) || maxUpgradeCost <= 0) {
+                this.log('Giá trị không hợp lệ. Sẽ sử dụng giá trị mặc định là không giới hạn.'.yellow);
+                maxUpgradeCost = Infinity;
+            }
+        }
     
         while (true) {
             const start = performance.now();
@@ -388,7 +415,7 @@ class Babydoge {
                     }
     
                     if (upgradeMyCardsDecision) {
-                        await this.upgradeMyCards(access_token, balance, proxy);
+                        await this.upgradeMyCards(access_token, proxy, maxUpgradeCost);
                     }
                     
                     await this.tapdc(access_token, energy, points_per_tap, proxy);
